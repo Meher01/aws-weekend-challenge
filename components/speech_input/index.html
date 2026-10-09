@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "DM Sans", "Segoe UI", sans-serif;
+        color: #392630;
+      }
+      body { margin: 0; background: transparent; }
+      .voice-box {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        min-height: 66px;
+        padding: 10px 14px;
+        border: 1px solid #f0dfe6;
+        border-radius: 15px;
+        background: #fff;
+      }
+      button {
+        flex: 0 0 auto;
+        border: 1px solid #e7c8d5;
+        border-radius: 12px;
+        padding: 10px 16px;
+        color: #684252;
+        background: #fbeaf0;
+        font: 600 15px/1.3 "DM Sans", "Segoe UI", sans-serif;
+        cursor: pointer;
+      }
+      button:hover { background: #f5dce6; }
+      button:focus-visible { outline: 3px solid #b86f8d; outline-offset: 2px; }
+      button:disabled { opacity: .7; cursor: wait; }
+      #status { color: #76636e; font-size: 14px; line-height: 1.45; }
+      @media (max-width: 460px) {
+        .voice-box { align-items: flex-start; flex-direction: column; gap: 9px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="voice-box">
+      <button id="record" type="button" aria-label="Speak your project idea">🎙️ Speak your idea</button>
+      <span id="status" role="status" aria-live="polite">Your spoken words will appear in the editable idea field below.</span>
+    </div>
+    <script>
+      const status = document.getElementById("status");
+      const button = document.getElementById("record");
+      const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      function setFrameHeight() {
+        window.parent.postMessage({
+          isStreamlitMessage: true,
+          type: "streamlit:setFrameHeight",
+          // Streamlit embeds local components in a separate frame.
+          height: document.body.scrollHeight
+        }, "*");
+      }
+
+      function setValue(value) {
+        window.parent.postMessage({
+          isStreamlitMessage: true,
+          type: "streamlit:setComponentValue",
+          value
+        }, "*");
+      }
+
+      window.addEventListener("message", (event) => {
+        if (event.data && event.data.type === "streamlit:render") setFrameHeight();
+      });
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:componentReady",
+        apiVersion: 1
+      }, "*");
+      setFrameHeight();
+
+      if (!Recognition) {
+        button.disabled = true;
+        status.textContent = "Voice input is not supported in this browser. Type your idea below instead.";
+      } else {
+        const recognition = new Recognition();
+        recognition.lang = navigator.language || "en-US";
+        recognition.interimResults = false;
+        recognition.continuous = false;
+
+        button.addEventListener("click", () => {
+          try {
+            recognition.start();
+            button.disabled = true;
+            status.textContent = "Listening… speak naturally, then pause.";
+          } catch (error) {
+            status.textContent = "Could not start the microphone. Check browser permission and try again.";
+          }
+        });
+
+        recognition.onresult = (event) => {
+          const transcript = Array.from(event.results)
+            .map((result) => result[0].transcript)
+            .join(" ")
+            .trim();
+          if (!transcript) {
+            status.textContent = "No speech was detected. Try again or type your idea below.";
+            return;
+          }
+          if (transcript.length > 1200) {
+            status.textContent = "That transcript is over 1,200 characters. Please shorten it or type a focused summary below.";
+            return;
+          }
+          setValue({ text: transcript, nonce: Date.now() });
+          status.textContent = "Transcript added. Review or edit it in the project idea field below.";
+        };
+
+        recognition.onerror = (event) => {
+          const messages = {
+            "not-allowed": "Microphone permission was blocked. Allow access in your browser, or type your idea below.",
+            "no-speech": "No speech was detected. Try again or type your idea below.",
+            "network": "Browser speech recognition needs a network connection. You can type your idea below."
+          };
+          status.textContent = messages[event.error] || "Speech recognition stopped. Try again or type your idea below.";
+        };
+
+        recognition.onend = () => { button.disabled = false; };
+      }
+    </script>
+  </body>
+</html>
